@@ -176,14 +176,24 @@ def tambah_kegiatan(users):
     print()
     awal  = validasi_tanggal("Tanggal Mulai (dd-mm-yyyy): ", harus=True)
 
-    print("   [Enter] jika deadline sama dengan tanggal mulai")
-    akhir = validasi_tanggal("Deadline (dd-mm-yyyy): ", harus=False)
+    while True:
+        print("   [Enter] jika deadline sama dengan tanggal mulai")
+        akhir = validasi_tanggal("Deadline (dd-mm-yyyy): ", harus=False)
 
-    if akhir == "":
-        deadline = awal
-        print(f"Deadline otomatis diatur ke: {akhir}")
-    else:
-        deadline = akhir
+        if akhir == "":
+            deadline = awal
+            print(f"Deadline otomatis diatur ke: {akhir}")
+            break
+        else:
+            tgl_mulai = datetime.datetime.strptime(awal, "%d-%m-%Y")
+            tgl_akhir = datetime.datetime.strptime(akhir, "%d-%m-%Y")
+
+            if tgl_akhir < tgl_mulai:
+                print("   [!] Error: Deadline tidak boleh sebelum tanggal mulai!")
+                print(f"  Mulai: {awal}, tapi Deadline: {akhir}. Coba lagi.\n")
+            else:
+                deadline = akhir
+                break
 
     prioritas = validasi_prioritas()
     print("\n   (Masukkan Catatan, tekan[Enter] jika ingin mengosongkan.)")
@@ -217,54 +227,104 @@ def tampilkan_kegiatan(users, filter_judul=None):
         if not filter_judul:
             input("\n   [Tekan Enter untuk kembali...]")
         return
+
+    list_belum = []
+    list_selesai = []
+    
+    
+    hari_ini = datetime.date.today()
+
     def cek_urutan_prioritas(kegiatan):
-        if kegiatan['prioritas'] == '***':
-            return 1
-        elif kegiatan['prioritas'] == '**':
-            return 2
-        elif kegiatan['prioritas'] == '*':
-            return 3
-        else:
-            return 99
-    tugas_diurutkan = sorted(kegiatan_user, key=cek_urutan_prioritas)
-    nomor = 1
-    ditemukan = False
+        if kegiatan['prioritas'] == '***': return 1
+        elif kegiatan['prioritas'] == '**': return 2
+        elif kegiatan['prioritas'] == '*': return 3
+        else: return 99
 
-    for kegiatan in tugas_diurutkan:
+    keyword = filter_judul.lower() if filter_judul else ""
+
+    for kegiatan in kegiatan_user:
         if filter_judul:
-            keyword = filter_judul.lower()
-
             cek_judul = keyword in kegiatan['judul'].lower()
             cek_kategori = keyword in kegiatan['kategori'].lower()
             cek_mulai = keyword in kegiatan['mulai']
             cek_deadline = keyword in kegiatan['deadline']
 
             if not (cek_judul or cek_kategori or cek_mulai or cek_deadline):
-                continue
+                continue 
+        
+        if kegiatan['status'] == True:
+            list_selesai.append(kegiatan)
+        else:
+            list_belum.append(kegiatan)
+
+    list_belum = sorted(list_belum, key=cek_urutan_prioritas)
+
+    
+    print(f"\n   [ TUGAS AKTIF (BELUM SELESAI) ({len(list_belum)}) ]")
+    print("   " + "-"*45)
+
+    if not list_belum:
+        if filter_judul:
+            print("   (Tidak ditemukan tugas sesuai pencarian)")
+        else:
+            print("   (Tidak ada tugas aktif. Kerja bagus!)")
+    else:
+        nomor_urut = 1
+        for t in list_belum:
+
+            tgl_deadline_obj = datetime.datetime.strptime(t['deadline'], "%d-%m-%Y").date()
             
-        ditemukan = True
-        catatan_tampil = kegiatan['catatan']
-        status_tandai = "[SELESAI]" if kegiatan['status'] else "[BELUM]"
-        prio_ini = kegiatan['prioritas']
-        kat_ini = kegiatan['kategori'].upper()
-
-        print(f"{nomor}. {kegiatan['judul']} {status_tandai}")
-        print(f"    Kategori    : {kat_ini}")
-        print(f"    Prioritas   : {prio_ini}")
-        print(f"    Waktu       : {kegiatan['mulai']} s/d {kegiatan['deadline']}")
-        print(f"    Catatan     : {catatan_tampil}")
-
-        if not kegiatan['status']:
-
-            if kegiatan['prioritas'] == '***':
-                print("    [!!] PERINGATAN: Prioritas TINGGI! Kerjakan segera!")
+            selisih = (tgl_deadline_obj - hari_ini).days
+            
+            pesan_waktu = ""
+            if selisih < 0:
+                
+                pesan_waktu = f" [!!! TERLAMBAT {abs(selisih)} HARI !!!]"
+            elif selisih == 0:
+                pesan_waktu = " [!!! DEADLINE HARI INI !!!]"
+            elif selisih == 1:
+                pesan_waktu = " (Besok Terakhir!)"
             else:
-                print("    >>> AYO KERJAKAN! Kegiatan ini belum selesai.")
+                pesan_waktu = f" (Sisa {selisih} hari lagi deadline mu)"
+
+            prio_display = t['prioritas']
+            prio_teks = "TINGGI" if prio_display == "***" else ("SEDANG" if prio_display == "**" else "RENDAH")
+
+            if selisih < 0:
+                print(f"   {nomor_urut}. {t['judul']} {pesan_waktu}")
+            else:
+                print(f"   {nomor_urut}. {t['judul']}")
+
+            print(f"      Kategori  : {t['kategori']}")
+            print(f"      Prioritas : {prio_display} ({prio_teks})")
+
+            if selisih >= 0:
+                print(f"      Deadline  : {t['deadline']} {pesan_waktu}")
+            else:
+                print(f"      Deadline  : {t['deadline']} (Sudah Lewat!)")
+
+            if t['catatan'] != "-":
+                print(f"      Catatan   : {t['catatan']}")
+
+            if selisih < 0:
+                print("      >>> PERINGATAN: TUGAS INI SUDAH KADALUARSA! <<<")
+            elif t['prioritas'] == '***':
+                print("      >>> SEGERA KERJAKAN! <<<")
             
-        print("-" * 52)
-        nomor += 1
-    if filter_judul and not ditemukan:
-        print(f"   [!]Tidak ada Kegiatan yang cocok dengan pencarian '{filter_judul}'.")
+            print("   " + "."*45)
+            nomor_urut += 1
+    
+    print(f"\n\n   [ RIWAYAT SELESAI ({len(list_selesai)}) ]")
+    print("   " + "-"*45)
+    
+    if not list_selesai:
+        print("   (Belum ada tugas yang diselesaikan)")
+    else:
+        nomor_urut = 1 
+        for t in list_selesai:
+            print(f"   {nomor_urut}. [SELESAI] {t['judul']}")
+            print(f"      Selesai pada deadline: {t['deadline']}")
+            nomor_urut += 1
 
     if not filter_judul:
         input("\n   Tekan [Enter] untuk kembali ke Menu Utama.")
@@ -291,7 +351,7 @@ def ubah_kegiatan(users):
     if 0 <= index < len(tugas_user):
         target = tugas_user[index]
         print(f"\n   >>> Sedang mengedit: {target['judul']}")
-        print("   (Biarkan KOSONG & Tekan [Enter] jika tidak ingin mengubah data)")
+        print("   ( Tekan [Enter] jika tidak ingin mengubah data)")
 
         print(f"\n   Nama Kegiatan Lama: {target['judul']}")
         judul_baru = input("   Nama Kegiatan Baru: ")
@@ -299,29 +359,46 @@ def ubah_kegiatan(users):
             target['judul'] = judul_baru
 
         print(f"\n   Kategori Lama: {target['kategori']}")
-        ubah_kat = input("   Ubah Kategori? (y/n): ").lower()
+        ubah_kat = input("   Apakah kamu mau ubah Kategori? (y/n): ").lower()
         if ubah_kat == 'y':
             target['kategori'] = validasi_kategori()
+
+        temp_mulai = target['mulai']
 
         print(f"\n   Tanggal Mulai Lama: {target['mulai']}")
         mulai_baru = validasi_tanggal("   Tanggal Mulai Baru (dd-mm-yyyy): ", harus=False)
         if mulai_baru != "":
-            target['mulai'] = mulai_baru
+            temp_mulai = mulai_baru
 
-        print(f"\n   Tanggal Deadline Lama: {target['deadline']}")
-        print("   Tekan [Enter] jika deadline di tanggal yang sama.")
-        deadline_baru = validasi_tanggal("   Tanggal Deadline Baru (dd-mm-yyyy): ", harus=False)
-        if deadline_baru != "":
-            target['deadline'] = deadline_baru
-        elif mulai_baru != "":
-            target['deadline'] = mulai_baru
+        while True:
+            print(f"\n   Tanggal Deadline Lama: {target['deadline']}")
+            print("   Tekan [Enter] jika deadline di tanggal yang sama.")
+            deadline_baru = validasi_tanggal("   Tanggal Deadline Baru (dd-mm-yyyy): ", harus=False)
+            temp_deadline = deadline_baru if deadline_baru != "" else target['deadline']
+
+            obj_mulai = datetime.datetime.strptime(temp_mulai, "%d-%m-%Y")
+            obj_deadline = datetime.datetime.strptime(temp_deadline, "%d-%m-%Y")
+
+            if obj_deadline < obj_mulai:
+                print("  [!] Error: Tanggal Deadline tidak boleh sebelum Tanggal Mulai!")
+                print(f"  Mulai (Baru/Lama): {temp_mulai}")
+                print(f"  Deadline yang dicoba: {temp_deadline}")
+                print("  Silakan input deadline yang benar.")
+            else:
+                if deadline_baru != "":
+                    target['deadline'] = deadline_baru
+                if mulai_baru != "":
+                    target['deadline'] = mulai_baru
+                break
 
         print(f"\n   Prioritas Lama: {target['prioritas']}")
         ganti_prio = input("   Ubah Prioritas? (y/n): ").lower()
         if ganti_prio == 'y':
             target['prioritas'] = validasi_prioritas()
 
-        print(f"\n   Catatan Lama: {target['catatan']}")
+        ubah_cat = input("Apakah kamu ingin mengubah catatan? (y/n): ").lower()
+        if ubah_cat == 'y':
+            print(f"\n   Catatan Lama: {target['catatan']}")
         catatan_baru = input("   Catatan Baru: ")
         if catatan_baru.strip() != "":
             target['catatan'] = catatan_baru
@@ -360,8 +437,15 @@ def aksi_fitur(users, tanda="selesai"):
             target['status'] = True
             print(f"\n   [v] Kegiatan '{target['judul']}' telah ditandai SELESAI.")
         elif tanda == "hapus":
-            terhapus = tugas_user.pop(index)
-            print(f"\n   [x] Kegiatan '{terhapus['judul']}' BERHASIL DIHAPUS.")
+            print(f"\n   [?] PERINGATAN: Anda akan menghapus '{target['judul']}'")
+            print("       Data yang dihapus tidak bisa dikembalikan.")
+
+            konfirmasi = input("   Yakin ingin menghapus? (ketik 'y' untuk Ya): ").lower()
+            if konfirmasi == 'y':
+                terhapus = tugas_user.pop(index)
+                print(f"\n   [x] Kegiatan '{terhapus['judul']}' BERHASIL DIHAPUS.")
+            else:
+                print("\n   [!] Penghapusan DIBATALKAN. Data aman.")
     else:
         print("\n   [!] Nomor tidak ditemukan.")
     
